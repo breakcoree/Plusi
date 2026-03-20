@@ -2,7 +2,6 @@
 #include <string>
 #include <cstdlib>
 #include <ctime>
-#include <chrono>
 
 using namespace std;
 
@@ -15,166 +14,124 @@ struct Deal {
     string status;
 };
 
+// Узел связного списка для метода цепочек
 struct Node {
-    string key;
     Deal value;
     Node* next;
 
-    Node(string k, Deal v) {
-        key = k;
+    Node(Deal v) {
         value = v;
         next = nullptr;
     }
 };
 
-int hash_func(string s, int size) {
-
-    unsigned long long H = 0;
-    unsigned long long p = 31;
-    const unsigned long long M = 1315423911ULL;
-
-    for (unsigned char a : s) {
-        H = (H + (unsigned long long)a * p) % M;
-        p = (p * p) % M;
-    }
-
-    return H % size;
-}
-
 class HashTable {
-
 private:
-
     int SIZE;
     Node** buckets;
 
+    int hash_func(const string& s) {
+        unsigned long long H = 0;
+        unsigned long long p = 31;
+        const unsigned long long M = 1315423911ULL;
+
+        for (unsigned char a : s) {
+            H = (H + (unsigned long long)a * p) % M;
+            p = (p * p) % M;
+        }
+        return H % SIZE;
+    }
+
 public:
-
     HashTable(int size) {
-
         SIZE = size;
         buckets = new Node*[SIZE];
-
         for (int i = 0; i < SIZE; i++)
             buckets[i] = nullptr;
     }
 
-    void Insert(string key, Deal value) {
-
-        int idx = hash_func(key, SIZE);
-
-        Node* node = new Node(key, value);
-        node->next = buckets[idx];
+    // Вставка через метод цепочек
+    void Insert(Deal d) {
+        int idx = hash_func(d.owner);
+        Node* node = new Node(d);
+        node->next = buckets[idx]; // добавляем в голову списка
         buckets[idx] = node;
+
+        cout << "Inserted " << d.owner << " at bucket " << idx << endl;
     }
 
-    void FindByOwner(string owner) {
-
-        int idx = hash_func(owner, SIZE);
+    // Поиск по владельцу с выводом цепочки
+    void FindByOwner(const string& owner) {
+        int idx = hash_func(owner);
         Node* cur = buckets[idx];
 
+        cout << "Searching bucket " << idx << ":\n";
+
+        bool found = false;
         while (cur) {
-
-            if (cur->key == owner) {
-
-                cout << cur->value.contractNumber << " "
-                     << cur->value.owner << " "
-                     << cur->value.price << endl;
+            if (cur->value.owner == owner) {
+                cout << "  Contract: " << cur->value.contractNumber
+                     << ", Owner: " << cur->value.owner
+                     << ", Price: " << cur->value.price << endl;
+                found = true;
             }
-
             cur = cur->next;
         }
-    }
-};
-
-struct Dictionary {
-
-    Deal data[100];
-    int size = 0;
-
-    void Insert(Deal d) {
-
-        data[size++] = d;
+        if (!found) cout << "  No deals found for " << owner << endl;
     }
 
-    void FindByOwner(string owner) {
-
-        for (int i = 0; i < size; i++) {
-
-            if (data[i].owner == owner) {
-
-                cout << data[i].contractNumber << " "
-                     << data[i].owner << " "
-                     << data[i].price << endl;
+    // Показать всю хэш-таблицу
+    void PrintTable() {
+        cout << "\nHash Table Buckets:\n";
+        for (int i = 0; i < SIZE; i++) {
+            cout << "[" << i << "]: ";
+            Node* cur = buckets[i];
+            while (cur) {
+                cout << cur->value.owner << " -> ";
+                cur = cur->next;
             }
+            cout << "NULL\n";
         }
     }
 };
 
-void GenerateDeals(HashTable& table, Dictionary& dict, int count) {
-
-    string owners[] = {"Иванов","Петров","Сидоров","Смирнов","Кузнецов"};
+void GenerateDeals(HashTable& table) {
     string status[] = {"успех","провал"};
 
-    for (int i = 0; i < count; i++) {
+    // Создаём коллизию намеренно
+    Deal d1 = {"101", "2024", "Иванов", 120000, 30, "успех"};
+    Deal d2 = {"102", "2024", "ИвановX", 150000, 45, "провал"};
 
+    table.Insert(d1);
+    table.Insert(d2);
+
+    // Остальные случайные сделки
+    string owners[] = {"Петров","Сидоров","Смирнов","Кузнецов"};
+    for (int i = 3; i <= 10; i++) {
         Deal d;
-
         d.contractNumber = to_string(100 + i);
         d.date = "2024";
-
-        d.owner = owners[rand() % 5];
-
+        d.owner = owners[rand() % 4];
         d.price = 50000 + rand() % 100000;
-
         d.salePeriod = 10 + rand() % 60;
-
         d.status = status[rand() % 2];
 
-        table.Insert(d.owner, d);
-        dict.Insert(d);
+        table.Insert(d);
     }
 }
 
 int main() {
-
     srand(time(0));
 
-    HashTable table(50);
-    Dictionary dict;
+    HashTable table(5); // маленький размер для коллизий
 
-    GenerateDeals(table, dict, 50);
+    GenerateDeals(table);
 
-    string target = "Иванов";
+    table.PrintTable();
 
-    cout << "Поиск в словаре:\n";
+    cout << "\nПоиск по владельцу 'Иванов':\n";
+    table.FindByOwner("Иванов");
 
-    auto start1 = chrono::high_resolution_clock::now();
-
-    dict.FindByOwner(target);
-
-    auto end1 = chrono::high_resolution_clock::now();
-
-    auto timeDict =
-    chrono::duration_cast<chrono::nanoseconds>(end1 - start1);
-
-
-    cout << "\nПоиск в хеш таблице:\n";
-
-    auto start2 = chrono::high_resolution_clock::now();
-
-    table.FindByOwner(target);
-
-    auto end2 = chrono::high_resolution_clock::now();
-
-    auto timeHash =
-    chrono::duration_cast<chrono::nanoseconds>(end2 - start2);
-
-
-    cout << "\nВремя поиска в словаре: "
-         << timeDict.count() << " ns\n";
-
-    cout << "Время поиска в хеш таблице: "
-         << timeHash.count() << " ns\n";
-
+    cout << "\nПоиск по владельцу 'ИвановX':\n";
+    table.FindByOwner("ИвановX");
 }
