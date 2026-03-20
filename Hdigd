@@ -2,9 +2,10 @@
 #include <string>
 #include <cstdlib>
 #include <ctime>
-
+#include <chrono>
 using namespace std;
 
+// --- Структура сделки ---
 struct Deal {
     string contractNumber;
     string date;
@@ -14,124 +15,195 @@ struct Deal {
     string status;
 };
 
-// Узел связного списка для метода цепочек
-struct Node {
-    Deal value;
-    Node* next;
+// --- Словарь ---
+struct Dictionary {
+    Deal data[100];
+    int size = 0;
 
-    Node(Deal v) {
-        value = v;
-        next = nullptr;
+    void Insert(Deal d) { data[size++] = d; }
+
+    void FindByOwner(string owner) {
+        for (int i = 0; i < size; i++)
+            if (data[i].owner == owner)
+                cout << data[i].contractNumber << " | " << data[i].owner
+                     << " | " << data[i].price << " | " << data[i].status << endl;
+    }
+
+    double FailedDealsPercentage() {
+        int fail = 0;
+        for (int i = 0; i < size; i++)
+            if (data[i].status == "провал") fail++;
+        return 100.0 * fail / size;
     }
 };
 
+// --- Узел для хеш-таблицы ---
+struct Node {
+    string key; // ключ — владелец
+    Deal value;
+    Node* next;
+    Node(string k, Deal v) { key = k; value = v; next = nullptr; }
+};
+
+// --- Хеш-функция ---
+int hash_func(string s, int size) {
+    unsigned long long H = 0;
+    unsigned long long p = 31;
+    const unsigned long long M = 1315423911ULL;
+    for (unsigned char a : s) {
+        H = (H + (unsigned long long)a * p) % M;
+        p = (p * p) % M;
+    }
+    return static_cast<int>(H % size);
+}
+
+// --- Хеш-таблица через метод цепочек ---
 class HashTable {
 private:
-    int SIZE;
+    size_t SIZE;
     Node** buckets;
-
-    int hash_func(const string& s) {
-        unsigned long long H = 0;
-        unsigned long long p = 31;
-        const unsigned long long M = 1315423911ULL;
-
-        for (unsigned char a : s) {
-            H = (H + (unsigned long long)a * p) % M;
-            p = (p * p) % M;
-        }
-        return H % SIZE;
-    }
-
 public:
-    HashTable(int size) {
+    HashTable(size_t size) {
         SIZE = size;
         buckets = new Node*[SIZE];
-        for (int i = 0; i < SIZE; i++)
-            buckets[i] = nullptr;
+        for (size_t i = 0; i < SIZE; ++i) buckets[i] = nullptr;
     }
 
-    // Вставка через метод цепочек
-    void Insert(Deal d) {
-        int idx = hash_func(d.owner);
-        Node* node = new Node(d);
-        node->next = buckets[idx]; // добавляем в голову списка
-        buckets[idx] = node;
+    ~HashTable() { clear(); delete[] buckets; }
 
-        cout << "Inserted " << d.owner << " at bucket " << idx << endl;
-    }
-
-    // Поиск по владельцу с выводом цепочки
-    void FindByOwner(const string& owner) {
-        int idx = hash_func(owner);
+    void InsertUpdate(string key, Deal value) {
+        int idx = hash_func(key, SIZE);
         Node* cur = buckets[idx];
-
-        cout << "Searching bucket " << idx << ":\n";
-
-        bool found = false;
         while (cur) {
-            if (cur->value.owner == owner) {
-                cout << "  Contract: " << cur->value.contractNumber
-                     << ", Owner: " << cur->value.owner
-                     << ", Price: " << cur->value.price << endl;
-                found = true;
+            if (cur->key == key) {
+                // Обновление: добавляем новую сделку в голову цепочки
+                Node* node = new Node(key, value);
+                node->next = cur->next;
+                cur->next = node;
+                return;
             }
             cur = cur->next;
         }
-        if (!found) cout << "  No deals found for " << owner << endl;
+        Node* node = new Node(key, value);
+        node->next = buckets[idx];
+        buckets[idx] = node;
     }
 
-    // Показать всю хэш-таблицу
-    void PrintTable() {
-        cout << "\nHash Table Buckets:\n";
-        for (int i = 0; i < SIZE; i++) {
-            cout << "[" << i << "]: ";
+    void FindByOwner(string key) {
+        int idx = hash_func(key, SIZE);
+        Node* cur = buckets[idx];
+        while (cur) {
+            if (cur->key == key) {
+                cout << cur->value.contractNumber << " | " << cur->value.owner
+                     << " | " << cur->value.price << " | " << cur->value.status << endl;
+            }
+            cur = cur->next;
+        }
+    }
+
+    double FailedDealsPercentage() {
+        int fail = 0, total = 0;
+        for (size_t i = 0; i < SIZE; i++) {
             Node* cur = buckets[i];
             while (cur) {
-                cout << cur->value.owner << " -> ";
+                total++;
+                if (cur->value.status == "провал") fail++;
                 cur = cur->next;
             }
-            cout << "NULL\n";
+        }
+        return 100.0 * fail / total;
+    }
+
+    void Print() {
+        for (size_t i = 0; i < SIZE; ++i) {
+            cout << i << ":";
+            Node* cur = buckets[i];
+            if (!cur) { cout << " (empty)"; }
+            while (cur) {
+                cout << " [" << cur->key << " -> " << cur->value.contractNumber << "]";
+                cur = cur->next;
+            }
+            cout << '\n';
+        }
+    }
+
+    void clear() {
+        for (size_t i = 0; i < SIZE; ++i) {
+            Node* cur = buckets[i];
+            while (cur) {
+                Node* nxt = cur->next;
+                delete cur;
+                cur = nxt;
+            }
+            buckets[i] = nullptr;
         }
     }
 };
 
-void GenerateDeals(HashTable& table) {
+// --- Генерация случайных сделок ---
+void GenerateDeals(Dictionary& dict, HashTable& table, int count) {
+    string owners[] = {"Иванов","Петров","Сидоров","Смирнов","Кузнецов"};
     string status[] = {"успех","провал"};
-
-    // Создаём коллизию намеренно
-    Deal d1 = {"101", "2024", "Иванов", 120000, 30, "успех"};
-    Deal d2 = {"102", "2024", "ИвановX", 150000, 45, "провал"};
-
-    table.Insert(d1);
-    table.Insert(d2);
-
-    // Остальные случайные сделки
-    string owners[] = {"Петров","Сидоров","Смирнов","Кузнецов"};
-    for (int i = 3; i <= 10; i++) {
+    for (int i = 0; i < count; i++) {
         Deal d;
         d.contractNumber = to_string(100 + i);
         d.date = "2024";
-        d.owner = owners[rand() % 4];
+        d.owner = owners[rand() % 5];
         d.price = 50000 + rand() % 100000;
         d.salePeriod = 10 + rand() % 60;
         d.status = status[rand() % 2];
-
-        table.Insert(d);
+        dict.Insert(d);
+        table.InsertUpdate(d.owner, d);
     }
 }
 
+// --- Основная программа ---
 int main() {
     srand(time(0));
+    const int RECORDS = 50;
 
-    HashTable table(5); // маленький размер для коллизий
+    Dictionary dict1, dict2;
+    HashTable table1(10), table2(10);
 
-    GenerateDeals(table);
+    // Генерация данных
+    GenerateDeals(dict1, table1, RECORDS); // Задача 1
+    GenerateDeals(dict2, table2, RECORDS); // Задача 2
 
-    table.PrintTable();
+    string targetOwner = "Иванов";
 
-    cout << "\nПоиск по владельцу 'Иванов':\n";
-    table.FindByOwner("Иванов");
+    // Задача 1: перечень сделок владельца
+    cout << "\n=== Задача 1: сделки владельца " << targetOwner << " ===\n";
 
-    cout << "\nПоиск по владельцу 'ИвановX':\n";
-    table.FindByOwner("ИвановX");
+    auto startDict = chrono::high_resolution_clock::now();
+    dict1.FindByOwner(targetOwner);
+    auto endDict = chrono::high_resolution_clock::now();
+
+    auto startHash = chrono::high_resolution_clock::now();
+    table1.FindByOwner(targetOwner);
+    auto endHash = chrono::high_resolution_clock::now();
+
+    cout << "\nВремя поиска в словаре: "
+         << chrono::duration_cast<chrono::nanoseconds>(endDict - startDict).count() << " ns\n";
+    cout << "Время поиска в хеш-таблице: "
+         << chrono::duration_cast<chrono::nanoseconds>(endHash - startHash).count() << " ns\n";
+
+    table1.Print();
+
+    // Задача 2: процент неудачных сделок
+    cout << "\n=== Задача 2: процент неудачных сделок ===\n";
+
+    startDict = chrono::high_resolution_clock::now();
+    double failedDict = dict2.FailedDealsPercentage();
+    endDict = chrono::high_resolution_clock::now();
+
+    startHash = chrono::high_resolution_clock::now();
+    double failedHash = table2.FailedDealsPercentage();
+    endHash = chrono::high_resolution_clock::now();
+
+    cout << "Словарь: " << failedDict << " % неудачных сделок, время: "
+         << chrono::duration_cast<chrono::nanoseconds>(endDict - startDict).count() << " ns\n";
+    cout << "Хеш-таблица: " << failedHash << " % неудачных сделок, время: "
+         << chrono::duration_cast<chrono::nanoseconds>(endHash - startHash).count() << " ns\n";
+
+    return 0;
 }
