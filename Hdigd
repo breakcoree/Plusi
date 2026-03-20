@@ -1,0 +1,140 @@
+#include <iostream>
+#include <string>
+using namespace std;
+
+struct Deal {
+    string contractNumber;
+    string date;
+    string owner;
+    double price;
+    int salePeriod;
+    string status;
+};
+
+struct Node {
+    string key; // владелец
+    Deal value;
+    Node* next;
+
+    Node(string k, Deal v) {
+        key = k;
+        value = v;
+        next = nullptr;
+    }
+};
+
+// хеш-функция
+int hash_func(string s, int size) {
+    unsigned long long H = 0;
+    unsigned long long p = 31;
+    const unsigned long long M = 1315423911ULL;
+
+    for (unsigned char a : s) {
+        H = (H + (unsigned long long)a * p) % M;
+        p = (p * p) % M;
+    }
+
+    return H % size;
+}
+
+class HashTable {
+
+private:
+    int SIZE;
+    Node** buckets;
+
+public:
+
+    HashTable(int size) {
+        SIZE = size;
+        buckets = new Node*[SIZE];
+
+        for (int i = 0; i < SIZE; i++)
+            buckets[i] = nullptr;
+    }
+
+    void Insert(string key, Deal value) {
+
+        int idx = hash_func(key, SIZE);
+
+        Node* node = new Node(key, value);
+        node->next = buckets[idx];
+        buckets[idx] = node;
+    }
+
+    void FindByOwner(string owner) {
+
+        int idx = hash_func(owner, SIZE);
+        Node* cur = buckets[idx];
+
+        bool found = false;
+
+        while (cur) {
+            if (cur->key == owner) {
+
+                cout << "Договор: " << cur->value.contractNumber << endl;
+                cout << "Дата: " << cur->value.date << endl;
+                cout << "Сумма: " << cur->value.price << endl;
+                cout << "Срок продажи: " << cur->value.salePeriod << endl;
+                cout << "Статус: " << cur->value.status << endl;
+                cout << "------------------" << endl;
+
+                found = true;
+            }
+
+            cur = cur->next;
+        }
+
+        if (!found)
+            cout << "Сделки не найдены\n";
+    }
+
+    double FailedPercent() {
+
+        int total = 0;
+        int failed = 0;
+
+        for (int i = 0; i < SIZE; i++) {
+
+            Node* cur = buckets[i];
+
+            while (cur) {
+
+                total++;
+
+                if (cur->value.status == "провал")
+                    failed++;
+
+                cur = cur->next;
+            }
+        }
+
+        if (total == 0)
+            return 0;
+
+        return (double)failed / total * 100;
+    }
+
+};
+
+int main() {
+
+    HashTable table(20);
+
+    Deal d1 = {"001", "12.01.2024", "Иванов", 120000, 30, "успех"};
+    Deal d2 = {"002", "18.02.2024", "Петров", 95000, 40, "провал"};
+    Deal d3 = {"003", "01.03.2024", "Иванов", 150000, 25, "успех"};
+    Deal d4 = {"004", "15.03.2024", "Сидоров", 110000, 35, "провал"};
+
+    table.Insert(d1.owner, d1);
+    table.Insert(d2.owner, d2);
+    table.Insert(d3.owner, d3);
+    table.Insert(d4.owner, d4);
+
+    cout << "Сделки владельца Иванов:\n";
+    table.FindByOwner("Иванов");
+
+    cout << "\nПроцент неудачных сделок: "
+         << table.FailedPercent() << "%\n";
+
+}
